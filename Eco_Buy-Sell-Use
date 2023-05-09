@@ -10,7 +10,7 @@
 {{if eq $Cmd "buy" "sell"}}
 	{{if and ($Amt:=or (toInt (reFind `\d+` $Args)) 1) ($Item:=upper (trimSpace (reFind `( ?[a-zA-Z])+` $Args)))}}
 		{{if ($Item =$Items.Get $Item).value}}
-			{{if or (and (eq $Cmd "buy") (ge (toInt (dbGet .User.ID "Wallet").Value) ($TCost:=mult $Amt $Item.value))) (and (eq $Cmd "sell") (ge (toInt ($ItemAmt:=($Inv:=(dbGet .User.ID "Eco_Inventory").Value).Get $Item.name)) $Amt))}}
+			{{if or (and (eq $Cmd "buy") (ge (toInt (dbGet .User.ID "Wallet").Value) ($TCost:=mult $Amt $Item.value))) (and (eq $Cmd "sell") (ge (toInt ($ItemAmt:=($Inv:=or (dbGet .User.ID "Eco_Inventory").Value sdict).Get $Item.name)) $Amt))}}
 				{{$:=(sdict "buy" (sdict "Amt" (mult $TCost -1) "ItemAmt" (add $ItemAmt $Amt) "Act1" "Purchase" "Act2" "bought") "sell" (sdict "Amt" (div (mult $TCost 3) 5) "ItemAmt" (sub $ItemAmt $Amt) "Act1" "Sell" "Act2" "sold")).Get $Cmd}}
 				{{if eq $Cmd "buy"}}{{$TCost =mult $TCost -1}}{{end}}
 				{{$s:=dbIncr .User.ID "Wallet" $.Amt}}
@@ -24,7 +24,7 @@
 	{{if and ($Amt:=or (toInt (reFind `\d+` $Args)) 1) ($Item:=upper (trimSpace (reFind `( ?[a-zA-Z])+` $Args)))}}
 		{{$U:=""}}{{with userArg (reFind `\d{17,19}` $Args)}}{{$U =.}}{{end}}
 		{{if ($Item =($Items.Get $Item).name)}}
-			{{if ge (toInt ($ItemAmount:=($Inv:=(dbGet .User.ID "Eco_Inventory").Value).Get $Item)) $Amt}}
+			{{if ge (toInt ($ItemAmount:=($Inv:=or (dbGet .User.ID "Eco_Inventory").Value sdict).Get $Item)) $Amt}}
 				{{$Inv.Set $Item (sub ($Inv.Get $Item) $Amt)}}
 				{{if ($Item2:=reFind `Bag I{1,3}` $Item)}}
 					{{$Amt =mult $Amt (pow 3 (sub (len (reFindAll `I` $Item)) 1))}}
@@ -58,7 +58,7 @@
 					{{template "e" (sdict "t" (print .User.Username " Opened `" (or (reFind `\d+` $Args) 1) "` " $Item) "d" $Desc)}}
 				{{else if eq $Item "🔑Key"}}
 					{{if $U}}
-						{{if gt (toInt ($ItemAmount:=($UInv:=(dbGet $U.ID "Eco_Inventory").Value).Get "🔒Lock")) 0}}
+						{{if gt (toInt ($ItemAmount:=($UInv:=or (dbGet $U.ID "Eco_Inventory").Value sdict).Get "🔒Lock")) 0}}
 							{{$LocksBroke:=0}}
 							{{while gt $Amt 0}}
 								{{$LocksBroke =add $LocksBroke (randInt 4)}}{{$Amt =sub $Amt 1}}
