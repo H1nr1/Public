@@ -13,7 +13,7 @@
     {{$is:=cslice "💰Bag I" "🎁Box I" "💰Bag II" "🎁Box II" "2x" "💰Bag III" "🎁Box III" "2x" "4x"}}
     {{if le $Roll 3}}{{$is =slice $is 0 2}}
     {{else if and (ge $Roll 4) (le $Roll 8)}}{{$is =slice $is 0 5}}{{end}}
-    {{$Inv:=(dbGet .User.ID "Eco_Inventory").Value}}
+    {{$Inv:=or (dbGet .User.ID "Eco_Inventory").Value sdict}}
     {{$iList:=cslice}}{{$iCur:=""}}
     {{while gt $Roll 0}}
       {{$iCur =index $is (randInt (len $is))}}
