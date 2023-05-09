@@ -1,0 +1,46 @@
+{{$:=(sdict "daily" (sdict "Type" (sdict "nil" "Daily" "s" "day") "U" .User "Str" (add (or (toInt (dbGet .User.ID "EcoDaily").Value) 0) 1) "Mult" 250 "Base" 500 "Low" 86400 "Up" 172800) "weekly" (sdict "Type" (sdict "nil" "Weekly" "s" "week") "U" .User "Str" (add (or (toInt (dbGet .User.ID "EcoWeekly").Value) 0) 1) "Mult" 2500 "Base" 5000 "Low" 604800 "Up" 1209600)).Get $Cmd}}
+{{$Amt:=add (mult $.Str $.Mult) $.Base}}
+{{$CD:=dbGet .User.ID (print "Eco" $.Type.nil)}}
+{{$TS:=$.Low}}{{with $CD}}{{$TS =toInt (currentTime.Sub (or .UpdatedAt .CreatedAt)).Seconds}}{{end}}
+{{$e:=sdict "a" (sdict "i" (.User.AvatarURL "512") "n" (print $.Type.nil " Reward 💹")) "f" (sdict "t" (print $.Type.nil " amount increases by " $.Mult " coins per consecutive " $.Type.s))}}
+{{if lt $TS $.Low}}
+  {{$e.Del "a"}}{{$e.Set "d" (print "❌ Please wait " (humanizeDurationSeconds (mult (sub $.Low $TS) 1000000000)) " before claiming your " $.Type.nil " reward again ⚠️")}}
+{{else if and (ge $TS $.Low) (lt $TS $.Up)}}
+  {{$Roll:=0}}
+  {{if eq $.Type.nil "Daily"}}{{$Roll =div $.Str 14}}
+  {{else if eq $.Type.nil "Weekly"}}{{$Roll =div $.Str 3}}{{end}}
+  {{if $Roll}}
+    {{$is:=cslice "💰Bag I" "🎁Box I" "💰Bag II" "🎁Box II" "2x" "💰Bag III" "🎁Box III" "2x" "4x"}}
+    {{if le $Roll 3}}{{$is =slice $is 0 2}}
+    {{else if and (ge $Roll 4) (le $Roll 8)}}{{$is =slice $is 0 5}}{{end}}
+    {{$Inv:=(dbGet .User.ID "Eco_Inventory").Value}}
+    {{$iList:=cslice}}{{$iCur:=""}}
+    {{while gt $Roll 0}}
+      {{$iCur =index $is (randInt (len $is))}}
+      {{if not (in (cslice "2x" "4x") $iCur)}}{{$Inv.Set $iCur (add ($Inv.Get $iCur) 1)}}{{end}}
+      {{$iList =$iList.Append $iCur}}
+      {{$Roll =sub $Roll 1}}
+    {{end}}
+    {{if in $iList "4x"}}{{$Amt =mult $Amt 4}}
+    {{else if in $iList "2x"}}{{$Amt =mult $Amt 2}}{{end}}
+    {{$iList2:=sdict "💰Bag I" 0 "💰Bag II" 0 "💰Bag III" 0 "🎁Box I" 0 "🎁Box II" 0 "🎁Box III" 0 "🔑Key" 0 "🔒Lock" 0 "2x" 0 "4x" 0}}
+    {{range $iList}}
+      {{- if not (eq . "4x" "2x")}}{{- $iList2.Set . (add ($iList2.Get .) 1)}}{{- end -}}
+    {{end}}
+    {{dbSet .User.ID "Eco_Inventory" $Inv}}
+    {{$d:=print $Amt " 🪙Coins"}}
+    {{range $k, $v:=$iList2}}
+      {{- if gt $v 0}}{{- $d =joinStr "\n" $d (print "`" $v "` " $k)}}{{- end -}}
+    {{end}}
+    {{$e.Set "d" (print "Keep up your " $.Str " " $.Type.s " streak for more and better rewards!\n__You received:__\n" $d)}}
+  {{else}}{{$e.Set "d" (print "You received " $Amt " Coins with a " $.Type.nil " streak of " $.Str " 💰")}}{{end}}
+  {{$s:=dbIncr .User.ID "Wallet" $Amt}}{{$s =dbIncr .User.ID (print "Eco" $.Type.nil) 1}}
+{{else if ge $TS $.Up}}
+  {{$s:=dbIncr .User.ID "Wallet" $.Base}}
+  {{$e.Set "d" (print "Lost " $.Type.nil " streak! 😭\n\nYou gained **" $.Base " coins**!💰")}}{{dbDel .User.ID (print "Eco" $.Type.nil)}}
+{{end}}
+{{template "e" $e}}
+
+{{/* this is part of a much larger command where template e is used multiple times; so this is not a good representation of it's *use* */}}
+
+{{define "e"}}{{sendMessage nil (cembed "author" (sdict "icon_url" .a.i "name" .a.n) "title" .t "thumbnail" (sdict "url" .thumb) "description" .d "fields" .fields "footer" (sdict "icon_url" .f.i "text" (or .f.t (index (dbGet 0 "Eco_CmdSyntax").Value (randInt 24)))) "color" (randInt 0xFFFFFF))}}{{end}}
