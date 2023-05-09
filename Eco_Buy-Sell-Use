@@ -1,0 +1,113 @@
+{{/*Configurable Variables*/}}
+{{$FARID:=959339763431780397}}{{$GOATRID:=959340059465777202}}
+{{/*End of Configurable Variables*/}}
+ 
+{{$XP:=dbIncr .User.ID "XP" 1}}
+{{$Cmd:=lower (reFind `(?i)buy|sell|use` .Cmd)}}{{$Args:=joinStr " " .CmdArgs}}
+
+{{$Items:=(dbGet 0 "EcoItems").Value}}{{$e:=sdict}}
+
+{{if eq $Cmd "buy" "sell"}}
+	{{if and ($Amt:=or (toInt (reFind `\d+` $Args)) 1) ($Item:=upper (trimSpace (reFind `( ?[a-zA-Z])+` $Args)))}}
+		{{if ($Item =$Items.Get $Item).value}}
+			{{if or (and (eq $Cmd "buy") (ge (toInt (dbGet .User.ID "Wallet").Value) ($TCost:=mult $Amt $Item.value))) (and (eq $Cmd "sell") (ge (toInt ($ItemAmt:=($Inv:=(dbGet .User.ID "Eco_Inventory").Value).Get $Item.name)) $Amt))}}
+				{{$:=(sdict "buy" (sdict "Amt" (mult $TCost -1) "ItemAmt" (add $ItemAmt $Amt) "Act1" "Purchase" "Act2" "bought") "sell" (sdict "Amt" (div (mult $TCost 3) 5) "ItemAmt" (sub $ItemAmt $Amt) "Act1" "Sell" "Act2" "sold")).Get $Cmd}}
+				{{if eq $Cmd "buy"}}{{$TCost =mult $TCost -1}}{{end}}
+				{{$s:=dbIncr .User.ID "Wallet" $.Amt}}
+				{{$Inv.Set $Item.name $.ItemAmt}}{{dbSet .User.ID "Eco_Inventory" $Inv}}
+				{{template "e" (sdict "t" (print "Item " $.Act1) "d" (print .User.Username " " $.Act2 " `" $Amt "` " $Item.name " for **" (toInt (max $.Amt (mult $.Amt -1))) " coins**!"))}}
+			{{else}}{{template "e" (sdict "d" "Cannot be completed due to lack of funds or items")}}{{end}}
+		{{else}}{{template "e" (sdict "t" "Invalid Item" "d" "Please review the `$Shop`")}}{{end}}
+	{{else}}{{sendMessage nil (cembed "title" "Invalid Syntax" "description" (print "Syntax is `$" (title $Cmd) " <Amount> <Item>`") "color" 16711680)}}{{end}}
+
+{{else if eq $Cmd "use"}}
+	{{if and ($Amt:=or (toInt (reFind `\d+` $Args)) 1) ($Item:=upper (trimSpace (reFind `( ?[a-zA-Z])+` $Args)))}}
+		{{$U:=""}}{{with userArg (reFind `\d{17,19}` $Args)}}{{$U =.}}{{end}}
+		{{if ($Item =($Items.Get $Item).name)}}
+			{{if ge (toInt ($ItemAmount:=($Inv:=(dbGet .User.ID "Eco_Inventory").Value).Get $Item)) $Amt}}
+				{{$Inv.Set $Item (sub ($Inv.Get $Item) $Amt)}}
+				{{if ($Item2:=reFind `Bag I{1,3}` $Item)}}
+					{{$Amt =mult $Amt (pow 3 (sub (len (reFindAll `I` $Item)) 1))}}
+					{{$Coins:=0}}{{while gt $Amt 0}}{{$Coins =add $Coins (randInt 250 801)}}{{$Amt =sub $Amt 1}}{{end}}
+					{{$s:=dbIncr .User.ID "Wallet" $Coins}}
+					{{template "e" (sdict "t" (print .User.Username " Opened `" (or (reFind `\d+` $Args) 1) "` " $Item) "d" (print "**" .User.Username " unbundled `" $Coins " coins`**!"))}}
+				{{else if ($Item2:=reFind `Box I{1,3}` $Item)}}
+					{{$BoxItems:=(dbGet 0 "EcoBoxItems").Value}}
+					{{$:=(dict 1 (sdict "Amt" 2 "Lim" 75) 2 (sdict "Amt" 4 "Lim" 92) 3 (sdict "Amt" 8 "Lim" (len $BoxItems))).Get (len (reFindAll `I` $Item2))}}
+					{{$BoxItems =slice $BoxItems 0 $.Lim}}
+					{{$.Set "Amt" (mult $.Amt $Amt)}}
+					{{$Coins:=0}}{{$ItemList:=cslice}}{{$ItemCurrent:=""}}
+					{{while gt $.Amt 0}}
+						{{$Coins =add $Coins (randInt 250 1001)}}
+						{{$ItemCurrent =index $BoxItems (randInt (len $BoxItems))}}
+						{{if not (eq $ItemCurrent "2x Coins" "4x Coins")}}
+							{{$Inv.Set $ItemCurrent (add ($Inv.Get $ItemCurrent) 1)}}
+						{{end}}
+						{{$ItemList =$ItemList.Append $ItemCurrent}}
+						{{$.Set "Amt" (sub $.Amt 1)}}
+					{{end}}
+					{{$ItemList2:=sdict "💰Bag I" 0 "💰Bag II" 0 "💰Bag III" 0 "🎁Box I" 0 "🎁Box II" 0 "🎁Box III" 0 "🔑Key" 0 "🔒Lock" 0 "2x Coins" 0 "4x Coins" 0}}
+					{{range $ItemList}}
+						{{- if eq . "2x Coins"}}{{- $Coins =mult $Coins 2}}
+						{{- else if eq . "4x Coins"}}{{- $Coins =mult $Coins 4}}
+						{{- else}}{{- $ItemList2.Set . (add ($ItemList2.Get .) 1)}}{{- end -}}
+					{{end}}
+					{{$s:=dbIncr .User.ID "Wallet" $Coins}}
+					{{$Desc:=print "__You recieved:__\n`" $Coins "` 🪙Coins"}}
+					{{range $k, $v:=$ItemList2}}{{- if ge $v 1}}{{- $Desc =joinStr "\n" $Desc (print "`" $v "` " $k)}}{{- end -}}{{end}}
+					{{template "e" (sdict "t" (print .User.Username " Opened `" (or (reFind `\d+` $Args) 1) "` " $Item) "d" $Desc)}}
+				{{else if eq $Item "🔑Key"}}
+					{{if $U}}
+						{{if gt (toInt ($ItemAmount:=($UInv:=(dbGet $U.ID "Eco_Inventory").Value).Get "🔒Lock")) 0}}
+							{{$LocksBroke:=0}}
+							{{while gt $Amt 0}}
+								{{$LocksBroke =add $LocksBroke (randInt 4)}}{{$Amt =sub $Amt 1}}
+							{{end}}
+							{{$LocksBroke =min $LocksBroke $ItemAmount}}
+							{{$UInv.Set "🔒Lock" (sub $ItemAmount $LocksBroke)}}
+							{{dbSet $U.ID "Eco_Inventory" $UInv}}
+							{{template "e" (sdict "t" (print .User.Username " used `" (reFind `\d+` $Args) "` " $Item) "d" (print .User.Username " broke `" $LocksBroke "` of " $U.Username "'s Locks"))}}
+						{{else}}
+							{{$Inv.Set $Item (add ($Inv.Get $Item) $Amt)}}
+							{{template "e" (sdict "t" "User Has No Locks" "thumb" "https://media0.giphy.com/media/4sASRwjUKefLO/200.gif" "d" (print $U.Username " had no locks, so you can have your keys back"))}}
+						{{end}}
+					{{else}}{{sendMessage nil (cembed "title" "Invalid Syntax" "description" "Syntax is `$Use <Amount> <Item> <User: @/ID>`" "color" 16711680)}}{{end}}
+				{{else if eq $Item "🔒Lock"}}{{$Inv.Set $Item (add ($Inv.Get $Item) $Amt)}}{{template "e" (sdict "d" "Locks are automatically applied!")}}
+				{{else if eq $Item "<:GL_HenriRaspberry:1085968855408574525>Raspberry"}}{{$ID:=sendMessageRetID nil (cembed "image" (sdict "url" (index (cslice "https://media.tenor.com/WcPupjMTF_UAAAAd/rabit-nibble.gif" "https://media.tenor.com/rwWPe75DudUAAAAC/turtle-turtle-eating-a-berry.gif" "https://c.tenor.com/NoY8mKqPFXIAAAAM/bunny-rabbits.gif") (randInt 3))))}}{{deleteMessage nil $ID 15}}
+				{{else if eq $Item "<:EcoPaintballGun:1086028121838452767>Paintball Gun"}}
+					{{$Inv.Set $Item (add ($Inv.Get $Item) $Amt)}}{{template "e" (sdict "d" (print $Item " is a required item to use Paintballs\nPlease use <:EcoPaintball:1086028257847160913>Paintball instead!"))}}
+				{{else if eq $Item "<:EcoPaintball:1086028257847160913>Paintball"}}
+					{{if ($U =userArg $U)}}
+						{{if and (gt (toInt ($Inv.Get "<:EcoPaintballGun:1086028121838452767>Paintball Gun")) 0) (ge (toInt ($Inv.Get $Item)) $Amt)}}
+							{{$Hit:=0}}
+							{{while gt $Amt 0}}
+								{{if randInt 3}}{{$Hit =add $Hit 1}}{{end}}
+								{{$Amt =sub $Amt 1}}
+							{{end}}
+							{{if $Hit}}{{$s:=dbIncr $U.ID "Wallet" (print "-" ($Amt =mult (randInt 150 501) $Hit))}}{{end}}
+							{{template "e" (sdict "t" (print .User.Username " fired `" (reFind `\d+` $Args) "` Paintballs at " $U.Username) "d" (print "`" $Hit "` hit causing " $U.Username " `" $Amt " coins` in damages"))}}
+						{{else}}{{$Inv.Set $Item (add ($Inv.Get $Item) $Amt)}}{{template "e" (sdict "d" "Need a Paintball Gun and Paintballs?\nVisit the `$Shop`!")}}{{end}}
+					{{else}}{{sendMessage nil (cembed "title" "Invalid Syntax" "description" "Syntax is `$Use <Amount> <Item> <User: @/ID>`" "color" 16711680)}}{{end}}
+				{{else if eq $Item "⏳Timeout"}}
+					{{if $U}}
+						{{$s:=execAdmin "timeout" $U.ID $Amt (print .User.Username " used `" $Amt "` Timeout from their Inventory on you 😆")}}
+						{{template "e" (sdict "t" (print .User.Username " used `" $Amt "` " $Item) "d" (print $U.Username " has been timed out for `" $Amt "` minute"))}}
+					{{else}}
+						{{$Inv.Set $Item (add ($Inv.Get $Item) $Amt)}}
+						{{sendMessage nil (cembed "title" "Invalid Syntax" "description" "Syntax is `$Use <Amount> <Item> <User: @/ID>`" "color" 16711680)}}
+					{{end}}
+				{{else if eq $Item "🏦Bank Expansion"}}
+					{{$Expand:=dbIncr .User.ID "EcoBankExpand" (mult 100000 $Amt)}}
+					{{template "e" (sdict "t" (print .User.Username " used Bank Expansion!") "d" (print "Bank capacity is now **" (add (mult 100 $XP) $Expand) " coins**!"))}}
+				{{else if eq $Item "🦝Raccoon" "🐐GOAT"}}
+					{{$:=(sdict "🦝Raccoon" $FARID "🐐GOAT" $GOATRID).Get $Item}}
+					{{addRoleID $}}
+					{{template "e" (sdict "t" (print .User.Username " used " $Item) "d" (print "You now have the <@&" $ "> role!"))}}
+				{{end}}
+				{{dbSet .User.ID "Eco_Inventory" $Inv}}
+			{{else}}{{template "e" (sdict "t" "Insufficient Items" "d" "Cannot use what you don't have 🙃")}}{{end}}
+		{{else}}{{template "e" (sdict "t" "Invalid Item" "d" "Please check your `$Inventory` for items")}}{{end}}
+	{{else}}{{sendMessage nil (cembed "title" "Invalid Syntax" "description" (print "Syntax is `$Use <Amount> <Item> [User: @/ID]`") "color" 16711680)}}{{end}}
+{{end}}
+ 
+{{define "e"}}{{sendMessage nil (cembed "title" .t "description" .d "thumbnail" (sdict "url" .thumb) "footer" (sdict "icon_url" .Footer.Icon "text" (index (dbGet 0 "EcoSyntax").Value (randInt 24))) "color" (randInt 0xFFFFFF))}}{{end}}
